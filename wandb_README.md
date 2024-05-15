@@ -1,5 +1,7 @@
 # Using Weights & Biases (wandb) to Log Training
 
+#### Author: Sebastián Čambál (2022)
+
 ## Introduction
 
 Weights & Biases (wandb) is a powerful tool for machine learning developers to track experiments, visualize data, and share insights with others. It's particularly useful for logging training processes, comparing different models, and optimizing model performance.

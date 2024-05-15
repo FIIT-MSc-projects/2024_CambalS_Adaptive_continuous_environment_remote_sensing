@@ -1,6 +1,6 @@
 # Using Weights & Biases (wandb) to Log Training
 
-#### Author: Sebastián Čambál (2022)
+#### Author: Sebastián Čambál (2024)
 
 ## Introduction
 

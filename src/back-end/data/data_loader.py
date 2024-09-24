@@ -4,7 +4,6 @@ import logging
 import numpy as np
 import pandas as pd
 import os
-from drift_detection import DriftModule
 
 class DataModule:
     def __init__(self):
@@ -35,3 +34,10 @@ class DataModule:
         if self.nextCallCaount % 16 == 0:
             self.driftModule.detectDrift(self.data)
             self.nextCallCaount = 0
+
+class DriftModule:
+    def __init__(self):
+        pass
+
+    def detectDrift(self, data: dict) -> dict:
+        return {"message": False}

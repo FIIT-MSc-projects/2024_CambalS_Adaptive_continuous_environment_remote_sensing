@@ -1,14 +1,14 @@
+import plotly.graph_objects as go
+import os
+import logging
+import datetime
 from fastapi import FastAPI, Request
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
-from data.data_loader import DataModule
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-import plotly.graph_objects as go
-import logging
-import os
-import datetime
+from .data.data_loading import DataModule
 
 # Create an instance of FastAPI
 app = FastAPI()
@@ -26,6 +26,7 @@ logging.basicConfig(
     format='%(asctime)s %(levelname)-8s %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
+logging.getLogger('apscheduler').setLevel(logging.WARNING)
 logging.info('App started')
 
 # setup scheduler
@@ -33,7 +34,7 @@ scheduler = BackgroundScheduler()
 
 # data variable to store the data
 dataModule = DataModule()
-scheduler.add_job(dataModule.nextData, IntervalTrigger(seconds=120))
+scheduler.add_job(dataModule.nextData, IntervalTrigger(seconds=60))
 
 # start the scheduler
 scheduler.start()

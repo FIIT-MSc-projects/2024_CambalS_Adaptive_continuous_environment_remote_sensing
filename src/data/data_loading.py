@@ -7,7 +7,8 @@ import os
 
 class DataModule:
     def __init__(self):
-        self.dataPath = 'static/EEA-SK-Ba-trend.csv'
+        print(os.getcwd())
+        self.dataPath = '../data/processed/EEA-SK-Ba-trend.csv'
         self.logger = logging.getLogger(__name__)
         self.df = pd.read_csv(self.dataPath)
         self.obsolete = True

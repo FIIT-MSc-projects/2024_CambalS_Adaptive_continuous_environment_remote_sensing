@@ -7,7 +7,7 @@ seaborn
 tensorflow
 statsmodels
 scipy
-torch
 fastapi
 plotly
 apscheduler
+river

@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from .data.data_loading import DataModule
+from plotly.subplots import make_subplots
 
 # Create an instance of FastAPI
 app = FastAPI()
@@ -34,7 +35,7 @@ scheduler = BackgroundScheduler()
 
 # data variable to store the data
 dataModule = DataModule()
-scheduler.add_job(dataModule.nextData, IntervalTrigger(seconds=60))
+scheduler.add_job(dataModule.incrementIndex, IntervalTrigger(seconds=20))
 
 # start the scheduler
 scheduler.start()
@@ -49,7 +50,7 @@ def getData2() -> dict:
 
 @app.get('/data')
 def getData() -> dict | None:
-    if not dataModule.obsolete:
+    if dataModule.obsolete == False:
         dataModule.obsolete = True
         return dataModule.data
     else:
@@ -57,30 +58,71 @@ def getData() -> dict | None:
 
 @app.get('/')
 def getRoot(request: Request) -> HTMLResponse:
-    graph = go.Figure()
-    graph.add_trace(go.Scatter(
-        x=dataModule.data['dates'],
-        y=dataModule.data['real'],
-        mode='lines+markers',
-        name='Real Data')
+    graph = make_subplots(rows=3, cols=1, shared_xaxes=True, subplot_titles=("PM10 particulate matter", "PM2.5 particulate matter", "NO2"))
+
+    # 1st subplot
+    graph.add_trace(
+        go.Scatter(
+            x=dataModule.data['dates'],
+            y=dataModule.data['PM10'],
+            mode='lines+markers',
+            name='Real Data'
+        ), row=1, col=1
     )
     graph.add_trace(
         go.Scatter(
             x=dataModule.data['dates'],
-            y=dataModule.data['pred'],
+            y=dataModule.data['PM10pred'],
             mode='lines+markers',
-            name='Predicted Data')
+            name='Predicted Data'
+        ), row=1, col=1
+    )
+
+    # 2nd subplot
+    graph.add_trace(
+        go.Scatter(
+            x=dataModule.data['dates'],
+            y=dataModule.data['PM25'],
+            mode='lines+markers',
+            name='Real Data'
+        ), row=2, col=1
+    )
+    graph.add_trace(
+        go.Scatter(
+            x=dataModule.data['dates'],
+            y=dataModule.data['PM25pred'],
+            mode='lines+markers',
+            name='Predicted Data'
+        ), row=2, col=1
+    )
+
+    # 3rd subplot
+    graph.add_trace(
+        go.Scatter(
+            x=dataModule.data['dates'],
+            y=dataModule.data['NO2'],
+            mode='lines+markers',
+            name='Real Data'
+        ), row=3, col=1
+    )
+    graph.add_trace(
+        go.Scatter(
+            x=dataModule.data['dates'],
+            y=dataModule.data['NO2pred'],
+            mode='lines+markers',
+            name='Predicted Data'
+        ), row=3, col=1
     )
     # graph.write_image('static/plot.png')
 
-    graph.update_layout(
-        xaxis=dict(
-            rangeslider=dict(
-                visible=True
-            ),
-            type='date'
-        )
-    )
+    # graph.update_layout(
+    #     xaxis=dict(
+    #         rangeslider=dict(
+    #             visible=True
+    #         ),
+    #         type='date'
+    #     )
+    # )
 
     graph_json = graph.to_json()
     logging.info('GET root')

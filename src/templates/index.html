@@ -66,7 +66,6 @@
   </div>
   <script>
     var graphData = {{ graph_json | safe }};
-
     Plotly.newPlot('graph', graphData.data, graphData.layout);
 
     function updateGraph() {
@@ -74,23 +73,79 @@
         .then(response => response.json())
         .then(data => {
           if (data === null || data.dates.length === 0) {
+            console.error('No data received');
             return;
           }
 
+         // Log data to check for consistency
+          console.log('Received data:', data);
+
+          // Get lengths of real and predicted data
+          var realLength = data.dates.length;
+          var PM10predLength = data.PM10pred.length;
+          var PM25predLength = data.PM25pred.length;
+          var NO2predLength = data.NO2pred.length;
+
+          // Ensure all arrays are aligned in length
+          if (PM10predLength !== PM25predLength || PM25predLength !== NO2predLength) {
+            console.error('Data length mismatch: PM10pred, PM25pred, and NO2pred lengths differ');
+            return;
+          }
+
+          // If predicted data has more elements, append `null` to real data
+          var PM10 = [...data.PM10];
+          var PM25 = [...data.PM25];
+          var NO2 = [...data.NO2];
+
+          while (PM10.length < PM10predLength) {
+            PM10.push(null);
+          }
+          while (PM25.length < PM25predLength) {
+            PM25.push(null);
+          }
+          while (NO2.length < NO2predLength) {
+            NO2.push(null);
+          }
+
+          // Ensure that dates array is long enough
+          if (data.dates.length < PM10predLength) {
+            console.error('Dates array is shorter than the predicted data');
+            return;
+          }
+
+          // Update each subplot (PM10, PM2.5, NO2)
           Plotly.update('graph', {
-            x: [data.dates],
-            y: [data.real, data.pred]
+            x: [
+              data.dates,        // PM10 Real
+              data.dates,        // PM10 Predicted
+              data.dates,        // PM2.5 Real
+              data.dates,        // PM2.5 Predicted
+              data.dates,        // NO2 Real
+              data.dates,        // NO2 Predicted
+            ],
+            y: [
+              PM10,              // PM10 Real (with nulls if needed)
+              data.PM10pred,     // PM10 Predicted
+              PM25,              // PM2.5 Real (with nulls if needed)
+              data.PM25pred,     // PM2.5 Predicted
+              NO2,               // NO2 Real (with nulls if needed)
+              data.NO2pred       // NO2 Predicted
+            ]
           });
 
+          // Update the x-axis range for all subplots
           var lastIndex = data.dates.length - 1;
           var firstIndex = Math.max(0, lastIndex - 31);
 
           var updateLayout = {
-            'xaxis.range': [data.dates[firstIndex], data.dates[lastIndex]]
+            'xaxis.range': [data.dates[firstIndex], data.dates[lastIndex]],
+            'xaxis2.range': [data.dates[firstIndex], data.dates[lastIndex]],
+            'xaxis3.range': [data.dates[firstIndex], data.dates[lastIndex]]
           };
           Plotly.relayout('graph', updateLayout);
         });
     }
+
     setInterval(updateGraph, 6000);
   </script>
 </body>

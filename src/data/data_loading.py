@@ -28,7 +28,9 @@ class DataModule:
         # prediction setup
         self.driftModule = DriftModule()
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=3)
-        self.predictionModule = PredictionModule()
+        self.predictionModule = PredictionModule(
+            self.getDataForScaler()
+        )
         self.nextCallCount = 0
 
     def nextData(self) -> None:
@@ -78,6 +80,14 @@ class DataModule:
     def incrementIndex(self) -> None:
         self.idx += 1
         self.nextData()
+
+    def getDataForScaler(self) -> np.ndarray:
+        tmp = self.df[self.df['DatetimeBegin'] < '2020-01-01']
+        return np.array([
+            tmp['PM10 Concentration'].values,
+            tmp['PM2.5 Concentration'].values,
+            tmp['NO2 Concentration'].values
+        ]).reshape(-1, 3)
 
 
 class DriftModule:

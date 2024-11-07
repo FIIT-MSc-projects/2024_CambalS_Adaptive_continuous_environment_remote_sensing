@@ -3,6 +3,7 @@ import logging
 import pandas as pd
 import concurrent.futures
 from .model_actions.NN_module import PredictionModule
+from .model_actions.drift_detection import DriftModule
 
 
 class DataModule:
@@ -42,9 +43,18 @@ class DataModule:
         future = self.executor.submit(self.runPrediction)
         future.add_done_callback(self.savePredictionsCallback)
 
-        self.logger.info('Data updated')
         self.obsolete = False
 
+        isDriftPresent = self.driftModule.detect((
+            self.data['PM10'][-1],
+            self.data['PM25'][-1],
+            self.data['NO2'][-1]
+        ))
+        if isDriftPresent:
+            self.logger.info('Drift detected')
+            # TODO: start retraining
+
+        # TODO: Obsolete as river drift detectors have internal cooldown
         # self.nextCallCaount += 1
         # if self.nextCallCaount % 16 == 0:
         #     self.driftModule.detectDrift(self.data)
@@ -61,7 +71,6 @@ class DataModule:
             self.data['PM25pred'].append(self.df.loc[self.idx + 1, 'PM25 pred'])
             self.data['NO2pred'].append(self.df.loc[self.idx + 1, 'NO2 pred'])
             self.obsolete = False
-            self.logger.info('Predictions updated')
         except Exception as e:
             self.logger.error(f"Prediction failed: {str(e)}")
 
@@ -88,11 +97,3 @@ class DataModule:
             tmp['PM2.5 Concentration'].values,
             tmp['NO2 Concentration'].values
         ]).reshape(-1, 3)
-
-
-class DriftModule:
-    def __init__(self):
-        pass
-
-    def detectDrift(self, data: dict) -> dict:
-        return {"message": False}

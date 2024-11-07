@@ -1,8 +1,7 @@
-# import tensorflow as tf
-import asyncio
 import tensorflow.keras as keras
 import numpy as np
 import concurrent.futures
+import logging
 from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, mean_squared_error
 from sklearn.preprocessing import StandardScaler
 
@@ -13,6 +12,8 @@ class PredictionModule():
         self.model = keras.models.load_model(self.modelPath)
         self.scaler = StandardScaler().fit(scalerFitInput)
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=5)
+        self.logger = logging.getLogger(__name__)
+        self.retrainingInProgress = False
 
     def predict(self, data: np.ndarray) -> dict:
         data_2d = data.reshape(-1, 3)
@@ -49,14 +50,27 @@ class PredictionModule():
         # TODO: compare models, choose best, replace current one with the best
 
     def retrain(self, data: np.ndarray, labels: np.ndarray):
+        if self.retrainingInProgress:
+            self.logger.log('Attempting to retrain, but retraining already in progress')
+            return
+        self.retrainingInProgress = True
         future = self.executor.submit(self.retrainModel, data, labels)
         future.add_done_callback(self.retrainCallback)
 
     def retrainCallback(self, future):
         try:
             bestModel = future.result()
-            # self.model = bestModel
+
+            if bestModel is None:
+                self.logger.log('Retraining successful: keeping old model')
+                return
+
+            self.model = bestModel
             bestModel.save('../models/lstm2_retrained.keras')
             self.modelPath = '../models/lstm2_retrained.keras'
+
+            self.logger.log('Retraining successful: changing model')
         except Exception as e:
-            print(f"Retraining failed: {str(e)}")
+            self.logger.log(f"Retraining failed: {str(e)}")
+        finally:
+            self.retrainingInProgress = False

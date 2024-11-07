@@ -28,7 +28,7 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logging.getLogger('apscheduler').setLevel(logging.WARNING)
-logging.info('App started')
+logging.info('APP STARTED')
 
 # setup scheduler
 scheduler = BackgroundScheduler()
@@ -39,7 +39,7 @@ dataModule = DataModule()
 # add job to the scheduler
 scheduler.add_job(
     dataModule.incrementIndex,
-    IntervalTrigger(seconds=20)
+    IntervalTrigger(seconds=10)
 )
 
 # start the scheduler
@@ -49,10 +49,12 @@ scheduler.start()
 @app.on_event('shutdown')
 def shutdown_event():
     scheduler.shutdown()
+    logging.info('APP SHUTDOWN')
 
 
 @app.get('/fulldata')
-def getData2() -> dict:
+def getFulLData() -> dict:
+    logging.info('GET /fulldata')
     return dataModule.data
 
 
@@ -173,7 +175,7 @@ def getRoot(request: Request) -> HTMLResponse:
     )
 
     graph_json = graph.to_json()
-    logging.info('GET root')
+    logging.info('GET /')
 
     return templates.TemplateResponse(
         'index.html',

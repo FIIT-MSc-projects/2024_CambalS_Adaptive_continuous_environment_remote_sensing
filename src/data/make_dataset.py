@@ -1,5 +1,5 @@
 import numpy as np
-import pandas as pd
+
 
 def make_dataset(data_src, n_past: int, n_future: int, train_split=(70, 15, 15)) -> np.ndarray:
     train_portion = data_src[:int(len(data_src) * train_split[0] / 100)]

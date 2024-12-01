@@ -13,7 +13,9 @@ class DataModule:
 
         # data setup
         self.dataPath = '../data/processed/EEA-SK-Ba-trend.csv'
-        self.idx = 48
+        # self.idx = 48
+        self.idx = 128
+        self.dataGatheringPeriod = 64
         self.obsolete = True
         self.df = pd.read_csv(self.dataPath)
         self.data = {
@@ -27,7 +29,7 @@ class DataModule:
         self.data['NO2pred'] = [None] * self.idx
 
         # prediction setup
-        self.driftModule = DriftModule()
+        self.driftModule = DriftModule(self.dataGatheringPeriod)
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=3)
         self.predictionModule = PredictionModule(
             self.getDataForScaler()
@@ -51,14 +53,9 @@ class DataModule:
             self.data['NO2'][-1]
         ))
         if isDriftPresent:
-            self.logger.info('Drift detected')
-            # TODO: start retraining
-
-        # TODO: Obsolete as river drift detectors have internal cooldown
-        # self.nextCallCaount += 1
-        # if self.nextCallCaount % 16 == 0:
-        #     self.driftModule.detectDrift(self.data)
-        #     self.nextCallCount = 0
+            self.logger.info('Drift detected, attempting to retrain model')
+            features, labels = self.prepareDataFotRetraining()
+            self.predictionModule.retrain(features, labels)
 
     def runPrediction(self):
         return self.predictionModule.predict(self.prepareDataForPrediction())
@@ -97,3 +94,24 @@ class DataModule:
             tmp['PM2.5 Concentration'].values,
             tmp['NO2 Concentration'].values
         ]).reshape(-1, 3)
+
+    def prepareDataFotRetraining(self, n_past: int = 48, n_future: int = 1) -> np.ndarray:
+        data = np.array([
+            self.data['PM10'][-self.dataGatheringPeriod:],
+            self.data['PM25'][-self.dataGatheringPeriod:],
+            self.data['NO2'][-self.dataGatheringPeriod:]
+        ]).T
+
+        features = []
+        labels = []
+        for i in range(len(data) - n_past - n_future + 1):
+            features.append(data[i:i + n_past])
+            labels.append(data[i + n_past:i + n_past + n_future])
+        features = np.array(features)
+        labels = np.array(labels)
+
+        return features, labels
+
+    def test(self):
+        features, labels = self.prepareDataFotRetraining()
+        self.predictionModule.retrain(features, labels)

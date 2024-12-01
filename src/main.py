@@ -39,7 +39,7 @@ dataModule = DataModule()
 # add job to the scheduler
 scheduler.add_job(
     dataModule.incrementIndex,
-    IntervalTrigger(seconds=10)
+    IntervalTrigger(seconds=4)
 )
 
 # start the scheduler
@@ -65,6 +65,13 @@ def getData() -> dict | None:
         return dataModule.data
     else:
         return None
+
+
+@app.get('/predict')
+def testEndpoint() -> str:
+    logging.info('GET /predict')
+    dataModule.test()
+    return 'Predict endpoint'
 
 
 @app.get('/')

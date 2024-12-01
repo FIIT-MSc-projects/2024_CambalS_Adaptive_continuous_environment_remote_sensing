@@ -1,24 +1,29 @@
-from river.drift import PageHinkley
+from river.drift import ADWIN
 
 
 class DriftModule:
-    def __init__(self):
-        self.driftDetectorPM10 = PageHinkley(
-            min_instances=96,
-            threshold=50.0
+    def __init__(self, dataGatheringPeriod: int):
+        self.driftDetectorPM10 = ADWIN(
+            delta=0.00001,
+            grace_period=50,
+            clock=64 + dataGatheringPeriod
         )
-        self.driftDetectorPM25 = PageHinkley(
-            min_instances=96,
-            threshold=50.0
+        self.driftDetectorPM25 = ADWIN(
+            delta=0.00001,
+            grace_period=50,
+            clock=64 + dataGatheringPeriod
         )
-        self.driftDetectorNO2 = PageHinkley(
-            min_instances=96,
-            threshold=50.0
+        self.driftDetectorNO2 = ADWIN(
+            delta=0.00001,
+            grace_period=50,
+            clock=64 + dataGatheringPeriod
         )
 
     def detect(self, data: tuple) -> bool:
-        pm10drift = self.driftDetectorPM10.update(data[0])
-        pm25drift = self.driftDetectorPM25.update(data[1])
-        no2drift = self.driftDetectorNO2.update(data[2])
+        self.driftDetectorPM10.update(data[0])
+        self.driftDetectorPM25.update(data[1])
+        self.driftDetectorNO2.update(data[2])
 
-        return pm10drift or pm25drift or no2drift
+        if self.driftDetectorPM10.drift_detected or self.driftDetectorPM25.drift_detected or self.driftDetectorNO2.drift_detected:
+            return True
+        return False

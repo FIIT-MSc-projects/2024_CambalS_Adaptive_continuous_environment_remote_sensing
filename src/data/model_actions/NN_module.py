@@ -2,12 +2,17 @@ import tensorflow.keras as keras
 import numpy as np
 import concurrent.futures
 import logging
-from sklearn.metrics import mean_absolute_error, mean_absolute_percentage_error, mean_squared_error
+import keras_tuner as kt
+from sklearn.metrics import (
+    mean_absolute_error,
+    mean_absolute_percentage_error,
+    mean_squared_error,
+)
 from sklearn.preprocessing import StandardScaler
 
 
-class PredictionModule():
-    def __init__(self, scalerFitInput: np.ndarray, modelPath='../models/lstm2.keras'):
+class PredictionModule:
+    def __init__(self, scalerFitInput: np.ndarray, modelPath="../models/lstm2.keras"):
         self.modelPath = modelPath
         self.model = keras.models.load_model(self.modelPath)
         self.scaler = StandardScaler().fit(scalerFitInput)
@@ -31,18 +36,10 @@ class PredictionModule():
         prediction = self.model.predict(scaled_data)
         prediction = self.scaler.inverse_transform(prediction)
         return {
-            'PM10': prediction[0, 0],
-            'PM25': prediction[0, 1],
-            'NO2': prediction[0, 2]
+            "PM10": prediction[0, 0],
+            "PM25": prediction[0, 1],
+            "NO2": prediction[0, 2],
         }
-
-    def singleRretrainRun(self, data: np.ndarray, labels: np.ndarray, epochs: int = 5):
-        self.logger.info(f'Retraining model with {epochs} epochs')
-        newModel = keras.models.load_model(self.modelPath)
-        newModel.fit(data, labels, epochs=epochs)
-        modelMAE, modelMAPE, modelRMSE = self.calculateMetrics(newModel.predict(data), labels)
-        self.logger.info(f'MAE: {modelMAE}, MAPE: {modelMAPE}, RMSE: {modelRMSE}')
-        return newModel, modelMAE, modelMAPE, modelRMSE
 
     def calculateMetrics(self, predictions, real_values):
         real_values = real_values.squeeze(axis=1)
@@ -55,30 +52,37 @@ class PredictionModule():
         data_2d = data.reshape(-1, 3)
         scaled_data = self.scaler.transform(data_2d)
         scaled_data = scaled_data.reshape(data.shape)
-        scaled_labels = self.scaler.transform(labels.reshape(-1, 3)).reshape(labels.shape)
-        try1, mae1, mape1, rmse1 = self.singleRretrainRun(scaled_data, scaled_labels, epochs=5)
-        try2, mae2, mape2, rmse2 = self.singleRretrainRun(scaled_data, scaled_labels, epochs=8)
-        try3, mae3, mape3, rmse3 = self.singleRretrainRun(scaled_data, scaled_labels, epochs=10)
+        scaled_labels = self.scaler.transform(labels.reshape(-1, 3)).reshape(
+            labels.shape
+        )
+        self.logger.info("Retraining model")
 
-        models = [try1, try2, try3]
-        metrics = [
-            [mae1, mape1, rmse1],
-            [mae2, mape2, rmse2],
-            [mae3, mape3, rmse3]
-        ]
+        # Run the hyperparameter search
+        best_hps = self.hyperParamSearch(scaled_data, scaled_labels)
+        best_lr = best_hps.get("learning_rate")
+        best_epochs = best_hps.Int("epochs", min_value=8, max_value=20, step=4)
 
-        scores = [self.scoringFunction(m) for m in metrics]
-        best_index = scores.index(min(scores))
+        self.logger.info(f"Best Learning Rate: {best_lr}, Best Epochs: {best_epochs}")
+        best_model = self.buildModel(best_hps)
+        best_model.fit(scaled_data, scaled_labels, epochs=best_epochs)
+        predictions = best_model.predict(scaled_data)
 
-        self.logger.info(f'Old metrics: {self.currentBestMetrics}; Batch best: {metrics[best_index]}')
-        if scores[best_index] > self.scoringFunction(self.currentBestMetrics):
+        best_model_mae, best_model_mape, best_model_rmse = self.calculateMetrics(
+            predictions, scaled_labels
+        )
+
+        if self.scoringFunction(
+            [best_model_mae, best_model_mape, best_model_rmse]
+        ) > self.scoringFunction(self.currentBestMetrics):
             return None, None
 
-        return models[best_index], metrics[best_index]
+        return best_model, [best_model_mae, best_model_mape, best_model_rmse]
 
     def retrain(self, data: np.ndarray, labels: np.ndarray):
         if self.retrainingInProgress:
-            self.logger.info('Attempting to retrain, but retraining already in progress')
+            self.logger.info(
+                "Attempting to retrain, but retraining already in progress"
+            )
             return
         self.retrainingInProgress = True
         self.firstRetrain = True
@@ -90,16 +94,41 @@ class PredictionModule():
             bestModel, metrics = future.result()
 
             if bestModel is None:
-                self.logger.info('Retraining successful: keeping old model')
+                self.logger.info("Retraining successful: keeping old model")
                 return
 
             self.model = bestModel
             self.currentBestMetrics = metrics
-            bestModel.save('../models/lstm2_retrained.keras')
-            self.modelPath = '../models/lstm2_retrained.keras'
+            bestModel.save("../models/lstm2_retrained.keras")
+            self.modelPath = "../models/lstm2_retrained.keras"
 
-            self.logger.info('Retraining successful: changing model')
+            self.logger.info("Retraining successful: changing model")
         except Exception as e:
             self.logger.info(f"Retraining failed: {str(e)}")
         finally:
             self.retrainingInProgress = False
+
+    def buildModel(self, hp: kt.HyperParameters):
+        model = keras.models.load_model(self.modelPath)
+
+        optimizer = keras.optimizers.Adam(
+            learning_rate=hp.Choice("learning_rate", values=[5e-4, 1e-3, 5e-3, 1e-2])
+        )
+        model.compile(optimizer=optimizer, loss="mse", metrics=["mae", "mape"])
+        return model
+
+    def hyperParamSearch(
+        self, data: np.ndarray, labels: np.ndarray
+    ) -> kt.HyperParameters:
+        tuner = kt.RandomSearch(
+            self.buildModel,
+            max_trials=10,
+            executions_per_trial=1,
+            objective=kt.Objective("loss", direction="min"),
+            # max_epochs=15,
+            directory="random_search",
+            project_name="lstm_lr_epochs_tuning",
+        )
+        tuner.search(data, labels, validation_split=0.2, verbose=1)
+        best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
+        return best_hps

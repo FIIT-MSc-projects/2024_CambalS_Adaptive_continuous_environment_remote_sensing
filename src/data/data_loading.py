@@ -12,50 +12,51 @@ class DataModule:
         self.logger = logging.getLogger(__name__)
 
         # data setup
-        self.dataPath = '../data/processed/EEA-SK-Ba-trend.csv'
+        self.dataPath = "../data/processed/EEA-SK-Ba-trend.csv"
         # self.idx = 48
         self.idx = 128
         self.dataGatheringPeriod = 64
         self.obsolete = True
         self.df = pd.read_csv(self.dataPath)
         self.data = {
-            'dates': self.df['DatetimeBegin'].tolist()[:self.idx + 1],
-            'PM10': self.df['PM10 Concentration'].tolist()[:self.idx],
-            'PM25': self.df['PM2.5 Concentration'].tolist()[:self.idx],
-            'NO2': self.df['NO2 Concentration'].tolist()[:self.idx],
+            "dates": self.df["DatetimeBegin"].tolist()[: self.idx + 2],
+            "PM10": self.df["PM10 Concentration"].tolist()[: self.idx],
+            "PM25": self.df["PM2.5 Concentration"].tolist()[: self.idx],
+            "NO2": self.df["NO2 Concentration"].tolist()[: self.idx],
         }
-        self.data['PM10pred'] = [None] * self.idx
-        self.data['PM25pred'] = [None] * self.idx
-        self.data['NO2pred'] = [None] * self.idx
+        self.data["PM10pred"] = [None] * (self.idx + 1)
+        self.data["PM25pred"] = [None] * (self.idx + 1)
+        self.data["NO2pred"] = [None] * (self.idx + 1)
+        self.data["retraining"] = [None] * (self.idx + 1)
+        self.data["anomaly"] = [None] * (self.idx + 1)
 
         # prediction setup
         self.driftModule = DriftModule(self.dataGatheringPeriod)
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=3)
-        self.predictionModule = PredictionModule(
-            self.getDataForScaler()
-        )
+        self.predictionModule = PredictionModule(self.getDataForScaler())
         self.nextCallCount = 0
 
     def nextData(self) -> None:
-        self.data['dates'] = self.df['DatetimeBegin'].tolist()[:self.idx + 1]
-        self.data['PM10'] = self.df['PM10 Concentration'].tolist()[:self.idx]
-        self.data['PM25'] = self.df['PM2.5 Concentration'].tolist()[:self.idx]
-        self.data['NO2'] = self.df['NO2 Concentration'].tolist()[:self.idx]
+        self.data["dates"] = self.df["DatetimeBegin"].tolist()[: self.idx + 2]
+        self.data["PM10"] = self.df["PM10 Concentration"].tolist()[: self.idx]
+        self.data["PM25"] = self.df["PM2.5 Concentration"].tolist()[: self.idx]
+        self.data["NO2"] = self.df["NO2 Concentration"].tolist()[: self.idx]
 
         future = self.executor.submit(self.runPrediction)
         future.add_done_callback(self.savePredictionsCallback)
 
         self.obsolete = False
 
-        isDriftPresent = self.driftModule.detect((
-            self.data['PM10'][-1],
-            self.data['PM25'][-1],
-            self.data['NO2'][-1]
-        ))
+        isDriftPresent = self.driftModule.detect(
+            (self.data["PM10"][-1], self.data["PM25"][-1], self.data["NO2"][-1])
+        )
         if isDriftPresent:
-            self.logger.info('Drift detected, attempting to retrain model')
+            self.logger.info("Drift detected, attempting to retrain model")
+            self.data["retraining"].append(1)
             features, labels = self.prepareDataFotRetraining()
             self.predictionModule.retrain(features, labels)
+        else:
+            self.data["retraining"].append(None)
 
     def runPrediction(self):
         return self.predictionModule.predict(self.prepareDataForPrediction())
@@ -64,49 +65,53 @@ class DataModule:
         try:
             predictions = future.result()
             self.savePredictions(predictions)
-            self.data['PM10pred'].append(self.df.loc[self.idx + 1, 'PM10 pred'])
-            self.data['PM25pred'].append(self.df.loc[self.idx + 1, 'PM25 pred'])
-            self.data['NO2pred'].append(self.df.loc[self.idx + 1, 'NO2 pred'])
+            self.data["PM10pred"].append(self.df.loc[self.idx + 1, "PM10 pred"])
+            self.data["PM25pred"].append(self.df.loc[self.idx + 1, "PM25 pred"])
+            self.data["NO2pred"].append(self.df.loc[self.idx + 1, "NO2 pred"])
             self.obsolete = False
         except Exception as e:
             self.logger.error(f"Prediction failed: {str(e)}")
 
     def savePredictions(self, data: dict) -> None:
-        self.df.loc[self.idx + 1, 'PM10 pred'] = float(data['PM10'])
-        self.df.loc[self.idx + 1, 'PM25 pred'] = float(data['PM25'])
-        self.df.loc[self.idx + 1, 'NO2 pred'] = float(data['NO2'])
+        self.df.loc[self.idx + 1, "PM10 pred"] = float(data["PM10"])
+        self.df.loc[self.idx + 1, "PM25 pred"] = float(data["PM25"])
+        self.df.loc[self.idx + 1, "NO2 pred"] = float(data["NO2"])
 
     def prepareDataForPrediction(self) -> np.ndarray:
-        return np.array([
-            self.data['PM10'][-48:],
-            self.data['PM25'][-48:],
-            self.data['NO2'][-48:]
-        ])
+        return np.array(
+            [self.data["PM10"][-48:], self.data["PM25"][-48:], self.data["NO2"][-48:]]
+        )
 
     def incrementIndex(self) -> None:
         self.idx += 1
         self.nextData()
 
     def getDataForScaler(self) -> np.ndarray:
-        tmp = self.df[self.df['DatetimeBegin'] < '2020-01-01']
-        return np.array([
-            tmp['PM10 Concentration'].values,
-            tmp['PM2.5 Concentration'].values,
-            tmp['NO2 Concentration'].values
-        ]).reshape(-1, 3)
+        tmp = self.df[self.df["DatetimeBegin"] < "2020-01-01"]
+        return np.array(
+            [
+                tmp["PM10 Concentration"].values,
+                tmp["PM2.5 Concentration"].values,
+                tmp["NO2 Concentration"].values,
+            ]
+        ).reshape(-1, 3)
 
-    def prepareDataFotRetraining(self, n_past: int = 48, n_future: int = 1) -> np.ndarray:
-        data = np.array([
-            self.data['PM10'][-self.dataGatheringPeriod:],
-            self.data['PM25'][-self.dataGatheringPeriod:],
-            self.data['NO2'][-self.dataGatheringPeriod:]
-        ]).T
+    def prepareDataFotRetraining(
+        self, n_past: int = 48, n_future: int = 1
+    ) -> np.ndarray:
+        data = np.array(
+            [
+                self.data["PM10"][-self.dataGatheringPeriod :],
+                self.data["PM25"][-self.dataGatheringPeriod :],
+                self.data["NO2"][-self.dataGatheringPeriod :],
+            ]
+        ).T
 
         features = []
         labels = []
         for i in range(len(data) - n_past - n_future + 1):
-            features.append(data[i:i + n_past])
-            labels.append(data[i + n_past:i + n_past + n_future])
+            features.append(data[i : i + n_past])
+            labels.append(data[i + n_past : i + n_past + n_future])
         features = np.array(features)
         labels = np.array(labels)
 

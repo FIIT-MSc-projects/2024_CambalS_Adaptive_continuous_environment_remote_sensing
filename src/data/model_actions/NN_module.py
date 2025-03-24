@@ -26,7 +26,10 @@ class PredictionModule:
         return [1.431499, 0.168695, 4.422874]
 
     def scoringFunction(self, metric: list) -> float:
-        print(metric, type(metric))
+        # print(metric, type(metric))
+        self.logger.info(
+            f"Scoring metrics:\nMAE={metric[0]}, MAPE={metric[1]}, RMSE={metric[2]}"
+        )
         return metric[0] + 0.5 * metric[1] + 0.5 * metric[2]
 
     def predict(self, data: np.ndarray) -> dict:

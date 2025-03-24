@@ -76,6 +76,18 @@
   </div>
   <script>
     var graphData = {{ graph_json | safe }};
+    var retrainingTrace = {
+      x: graphData.data[0].x, // or another array of dates
+      y: new Array(graphData.data[0].x.length).fill(null), // start with no retraining events
+      mode: 'markers',
+      marker: {
+        symbol: 'triangle-up',
+        size: 12,
+        color: 'red'
+      },
+      name: 'Retraining'
+    };
+    graphData.data.push(retrainingTrace);
     Plotly.newPlot('graph', graphData.data, graphData.layout);
 
     function updateGraph() {
@@ -87,8 +99,12 @@
             return;
           }
 
-         // Log data to check for consistency
-          console.log('Received data:', data);
+          // Log data to check for consistency
+          // console.log('Received data:', data);
+
+          data.PM10pred.push(null);
+          data.PM25pred.push(null);
+          data.NO2pred.push(null);
 
           // Get lengths of real and predicted data
           var realLength = data.dates.length;
@@ -132,6 +148,7 @@
               data.dates,        // PM2.5 Predicted
               data.dates,        // NO2 Real
               data.dates,        // NO2 Predicted
+              data.dates         // For retraining indicaition
             ],
             y: [
               PM10,              // PM10 Real (with nulls if needed)
@@ -139,13 +156,14 @@
               PM25,              // PM2.5 Real (with nulls if needed)
               data.PM25pred,     // PM2.5 Predicted
               NO2,               // NO2 Real (with nulls if needed)
-              data.NO2pred       // NO2 Predicted
+              data.NO2pred,      // NO2 Predicted
+              data.retraining    // Retraining data  
             ]
           });
 
           // Update the x-axis range for all subplots
           var lastIndex = data.dates.length - 1;
-          var firstIndex = Math.max(0, lastIndex - 31);
+          var firstIndex = Math.max(0, lastIndex - 61);
 
           var updateLayout = {
             'xaxis.range': [data.dates[firstIndex], data.dates[lastIndex]],
@@ -156,7 +174,7 @@
         });
     }
 
-    setInterval(updateGraph, 1500);
+    setInterval(updateGraph, 2000);
   </script>
 </body>
 

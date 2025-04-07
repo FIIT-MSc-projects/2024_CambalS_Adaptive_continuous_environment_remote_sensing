@@ -4,6 +4,7 @@ import pandas as pd
 import concurrent.futures
 from .model_actions.NN_module import PredictionModule
 from .model_actions.drift_detection import DriftModule
+from .model_actions.anomaly_detection import AnomalyModule
 
 
 class DataModule:
@@ -34,6 +35,7 @@ class DataModule:
         self.driftModule = DriftModule(self.dataGatheringPeriod)
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=3)
         self.predictionModule = PredictionModule(self.getDataForScaler())
+        self.anomalyModule = AnomalyModule()
         self.nextCallCount = 0
 
     def nextData(self) -> None:
@@ -41,6 +43,12 @@ class DataModule:
         self.data["PM10"] = self.df["PM10 Concentration"].tolist()[: self.idx]
         self.data["PM25"] = self.df["PM2.5 Concentration"].tolist()[: self.idx]
         self.data["NO2"] = self.df["NO2 Concentration"].tolist()[: self.idx]
+
+        if self.idx >= 128 + 16:
+            future = self.executor.submit(self.runAnomalyDetection)
+            future.add_done_callback(self.runAnomalyDetectionCallback)
+        else:
+            self.data["anomaly"].append(None)
 
         future = self.executor.submit(self.runPrediction)
         future.add_done_callback(self.savePredictionsCallback)
@@ -57,6 +65,29 @@ class DataModule:
             self.predictionModule.retrain(features, labels)
         else:
             self.data["retraining"].append(None)
+
+    def runAnomalyDetection(self) -> None:
+        return self.anomalyModule.predict(
+            {
+                "PM10": self.data["PM10"][-16:],
+                "PM25": self.data["PM25"][-16:],
+                "NO2": self.data["NO2"][-16:],
+                "PM10pred": self.data["PM10pred"][-16:],
+                "PM25pred": self.data["PM25pred"][-16:],
+                "NO2pred": self.data["NO2pred"][-16:],
+            }
+        )
+
+    def runAnomalyDetectionCallback(self, future) -> None:
+        try:
+            anomaly = future.result()
+            print(f"Anomaly: {anomaly}")
+            self.data["anomaly"].append(anomaly)
+            if anomaly:
+                self.logger.info("Anomaly detected")
+        except Exception as e:
+            # self.logger.error(f"Anomaly detection failed: {str(e)}")
+            print(f"Anomaly detection failed: {str(e)}")
 
     def runPrediction(self):
         return self.predictionModule.predict(self.prepareDataForPrediction())

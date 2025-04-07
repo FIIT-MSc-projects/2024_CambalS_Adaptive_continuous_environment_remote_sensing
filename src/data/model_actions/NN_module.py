@@ -36,7 +36,7 @@ class PredictionModule:
         data_2d = data.reshape(-1, 3)
         scaled_data = self.scaler.transform(data_2d)
         scaled_data = scaled_data.reshape(1, 48, 3)
-        prediction = self.model.predict(scaled_data)
+        prediction = self.model.predict(scaled_data, verbose=0)
         prediction = self.scaler.inverse_transform(prediction)
         return {
             "PM10": prediction[0, 0],

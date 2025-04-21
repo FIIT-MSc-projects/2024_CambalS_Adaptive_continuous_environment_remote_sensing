@@ -75,89 +75,127 @@
     <div id="graph"></div>
   </div>
   <script>
+    const anomalyDates = [];
     document.addEventListener('DOMContentLoaded', () => {
-      // 0) grab our plot DIV
       const graphDiv = document.getElementById('graph');
-  
-      // 1) load the JSON data that Jinja templated in
-      const graphData = {{ graph_json | safe }};
-  
-      // 2) build the retraining trace and append to the data
-      const retrainTrace = {
-        x: graphData.data[0].x,
-        y: new Array(graphData.data[0].x.length).fill(null),
-        mode: 'markers',
-        marker: { symbol: 'triangle-up', size: 12, color: 'red' },
-        name: 'Retraining'
+      const WINDOW_SIZE = 62;
+
+      // 1) Grab the initial figure JSON from Jinja
+      const graphData = {{ graph_json | safe
+    }};
+
+    // 2) Build templates for retraining & anomaly markers
+    const retrainTpl = {
+      mode: 'markers',
+      marker: { symbol: 'triangle-up', size: 12, color: 'red' },
+      name: 'Retraining',
+      legendgroup: 'Retraining'
+    };
+    const anomTpl = {
+      mode: 'markers',
+      marker: { symbol: 'x', size: 10, color: 'yellow' },
+      name: 'Anomaly',
+      legendgroup: 'Anomaly'
+    };
+
+    // 3) Create one retrain + one anomaly trace *per row*, binding each to the right axes
+    //    Subplots created with make_subplots get axes named 'x','x2','x3' and 'y','y2','y3'
+    const extra = [
+      // retraining on row1,2,3
+      { ...retrainTpl, x: graphData.data[0].x, y: graphData.data[0].x.map(_ => null), xaxis: 'x', yaxis: 'y' },
+      { ...retrainTpl, x: graphData.data[0].x, y: graphData.data[0].x.map(_ => null), xaxis: 'x2', yaxis: 'y2', showlegend: false },
+      { ...retrainTpl, x: graphData.data[0].x, y: graphData.data[0].x.map(_ => null), xaxis: 'x3', yaxis: 'y3', showlegend: false },
+      // anomaly on row1,2,3
+      { ...anomTpl, x: graphData.data[0].x, y: graphData.data[0].x.map(_ => null), xaxis: 'x', yaxis: 'y' },
+      { ...anomTpl, x: graphData.data[0].x, y: graphData.data[0].x.map(_ => null), xaxis: 'x2', yaxis: 'y2', showlegend: false },
+      { ...anomTpl, x: graphData.data[0].x, y: graphData.data[0].x.map(_ => null), xaxis: 'x3', yaxis: 'y3', showlegend: false }
+    ];
+
+    graphData.data.push(...extra);
+
+    // 4) Initial plot
+    Plotly.newPlot(graphDiv, graphData.data, graphData.layout).then(() => {
+      // 5) Track how many preds & anomalies we've drawn
+      let lastPredLen = graphDiv.data[1].x.length;    // PM10pred trace
+      let lastAnomLen = {
+        PM10: graphDiv.data[9].x.length,
+        PM25: graphDiv.data[10].x.length,
+        NO2: graphDiv.data[11].x.length
       };
-      graphData.data.push(retrainTrace);
-  
-      // 3) draw it once, then in the .then() we know graphDiv.data is populated
-      Plotly.newPlot(graphDiv, graphData.data, graphData.layout).then(() => {
-        // 4) only now read the length of the pred-trace you already have
-        //    trace 1 === PM10pred, trace 3 === PM25pred, trace 5 === NO2pred
-        let lastPredLen = graphDiv.data[1].x.length;
-  
-        // 5) start polling
-        setInterval(updateGraph, 2000);
-  
-        function updateGraph() {
-          fetch('/data')
-            .then(r => r.json())
-            .then(d => {
-              if (!d?.dates?.length || d.dates.length < 2) return;
-  
-              // parse timestamps
-              const dates = d.dates.map(ts => new Date(ts));
-              const n     = dates.length;
-              const last  = dates[n - 1];
-              const prev  = dates[n - 2];
-              const delta = last - prev;
-              const next  = new Date(last.getTime() + delta);
-  
-              // always extend real‑measurement traces (0,2,4)
-              const yReal = [d.PM10, d.PM25, d.NO2].map(a => a.slice(-1)[0]);
+
+      // 6) The update loop
+      setInterval(updateGraph, 2000);
+
+      function updateGraph() {
+        fetch('/data')
+          .then(r => r.json())
+          .then(d => {
+            if (!d?.dates?.length || d.dates.length < 2) return;
+
+            // parse timestamps
+            const dates = d.dates.map(ts => new Date(ts));
+            const n = dates.length;
+            const last = dates[n - 1];
+            const prev = dates[n - 2];
+            const delta = last - prev;
+            const next = new Date(last.getTime() + delta);
+
+            // latest real values
+            const yReal = [d.PM10, d.PM25, d.NO2].map(a => a.slice(-1)[0]);
+
+            // 7a) always extend the real‐measurement traces (0,2,4)
+            Plotly.extendTraces(
+              graphDiv,
+              { x: [[last], [last], [last]], y: [[yReal[0]], [yReal[1]], [yReal[2]]] },
+              [0, 2, 4]
+            );
+
+            // 7b) extend pred‐traces (1,3,5) only if new preds have appeared
+            if (d.PM10pred.length > lastPredLen) {
+              const yPred = [d.PM10pred, d.PM25pred, d.NO2pred].map(a => a.slice(-1)[0]);
               Plotly.extendTraces(
                 graphDiv,
-                {
-                  x: [ [last],   [last],   [last]   ],
-                  y: [ [yReal[0]],[yReal[1]],[yReal[2]] ]
-                },
-                [0, 2, 4]
+                { x: [[next], [next], [next]], y: [[yPred[0]], [yPred[1]], [yPred[2]]] },
+                [1, 3, 5]
               );
-  
-              // only extend pred-traces (1,3,5) when new ones appear
-              if (d.PM10pred.length > lastPredLen) {
-                const yPred = [d.PM10pred, d.PM25pred, d.NO2pred].map(a => a.slice(-1)[0]);
-                Plotly.extendTraces(
-                  graphDiv,
-                  {
-                    x: [ [next],   [next],   [next]   ],
-                    y: [ [yPred[0]],[yPred[1]],[yPred[2]] ]
-                  },
-                  [1, 3, 5]
-                );
-                lastPredLen = d.PM10pred.length;
+              lastPredLen = d.PM10pred.length;
+            }
+
+            // 7c) extend all three retraining traces (6,7,8)
+            const yRetr = d.retraining?.slice(-1)[0] ?? null;
+            Plotly.extendTraces(
+              graphDiv,
+              { x: [[last], [last], [last]], y: [[yRetr], [yRetr], [yRetr]] },
+              [6, 7, 8]
+            );
+
+            // 7d) extend the one anomaly‐trace matching d.anomaly (9→row1,10→row2,11→row3)
+            ['PM10', 'PM25', 'NO2'].forEach((feat, i) => {
+              const arr = d.anomaly[feat];               // e.g. d.anomaly.PM10
+              if (arr.length > lastAnomLen[feat]) {
+                const val = arr[arr.length - 1];
+                lastAnomLen[feat] = arr.length;
+                if (val != null) {
+                  // trace indices 9,10,11 correspond to PM10,PM25,NO2 anomaly‐traces
+                  Plotly.extendTraces(
+                    graphDiv,
+                    { x: [[last]], y: [[yReal[i]]] },
+                    [9 + i]
+                  );
+                }
               }
-  
-              // append retraining marker (trace 6)
-              const yRetr = d.retraining?.slice(-1)[0] ?? null;
-              Plotly.extendTraces(
-                graphDiv,
-                { x: [[last]], y: [[yRetr]] },
-                [6]
-              );
-  
-              // slide the live WINDOW_SIZE view
-              const WINDOW_SIZE = 62;
-              const firstIdx   = Math.max(0, n - WINDOW_SIZE);
-              Plotly.relayout(graphDiv, {
-                'xaxis.range': [ dates[firstIdx], next ]
-              });
-            })
-            .catch(console.error);
-        }
-      });
+            });
+
+            // 8) slide the shared x‐axis window
+            const firstIdx = Math.max(0, n - WINDOW_SIZE);
+            const start = dates[firstIdx];
+            Plotly.relayout(graphDiv, {
+              'xaxis.range': [start, next]
+            });
+          })
+          .catch(console.error);
+      }
+    });
     });
   </script>
 </body>

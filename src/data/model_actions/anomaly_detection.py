@@ -2,32 +2,40 @@ import numpy as np
 
 
 class AnomalyModule:
-    def __init__(self):
-        pass
+    def __init__(self, z_thresh: float = 3.0):
 
-    def predict(self, data: dict) -> int | None:
-        try:
-            actual = [data["PM10"], data["PM25"], data["NO2"]]
-            predicted = [
-                data["PM10pred"],
-                data["PM25pred"],
-                data["NO2pred"],
-            ]
+        self.z_thresh = z_thresh
 
-            if len(actual) != len(predicted):
-                raise ValueError("Actual and predicted data lengths do not match.")
-            for real, pred in zip(actual, predicted):
-                if len(real) != len(pred):
-                    raise ValueError("Actual and predicted data lengths do not match.")
-            errors = np.array(actual) - np.array(predicted)
-            mean_error = np.mean(errors)
-            std_error = np.std(errors)
-            z_scores = np.abs((errors - mean_error) / std_error)
-            threshold = 3  # Z-score threshold for anomaly detection
+    def predict(self, data: dict) -> list[int | None]:
+        features = ["PM10", "PM25", "NO2"]
+        anomalies = []
 
-            anomalies = z_scores > threshold
-            return int(np.any(anomalies))
-        except ValueError as ve:
-            raise Exception(f"Value error: {str(ve)}")
-        except Exception as e:
-            raise Exception(f"Prediction failed: {str(e)}")
+        for idx, feat in enumerate(features):
+            actual = np.array(data.get(feat, []))
+            pred_key = f"{feat}pred"
+            predicted = np.array(data.get(pred_key, []))
+
+            if actual.size != predicted.size:
+                raise ValueError(
+                    f"Length mismatch for {feat}: actual={actual.size} vs predicted={predicted.size}"
+                )
+
+            if actual.size == 0:
+                anomalies.append(None)
+                continue
+
+            errors = actual - predicted
+            mean_err = np.mean(errors)
+            std_err = np.std(errors)
+
+            if std_err == 0:
+                anomalies.append(None)
+                continue
+
+            z_scores = np.abs((errors - mean_err) / std_err)
+            if z_scores[-1] > self.z_thresh:
+                anomalies.append(idx + 1)
+            else:
+                anomalies.append(None)
+
+        return anomalies

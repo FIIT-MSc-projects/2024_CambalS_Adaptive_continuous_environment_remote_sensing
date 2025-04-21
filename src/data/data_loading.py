@@ -29,7 +29,11 @@ class DataModule:
         self.data["PM25pred"] = [None] * (self.idx + 1)
         self.data["NO2pred"] = [None] * (self.idx + 1)
         self.data["retraining"] = [None] * (self.idx + 1)
-        self.data["anomaly"] = [None] * (self.idx + 1)
+        self.data["anomaly"] = {
+            "PM10": [None] * (self.idx + 1),
+            "PM25": [None] * (self.idx + 1),
+            "NO2": [None] * (self.idx + 1),
+        }
 
         # prediction setup
         self.driftModule = DriftModule(self.dataGatheringPeriod)
@@ -39,11 +43,13 @@ class DataModule:
         self.nextCallCount = 0
 
     def nextData(self) -> None:
-        if self.idx >= 128 + 16:
+        if self.idx >= 128 + 17:
             future = self.executor.submit(self.runAnomalyDetection)
             future.add_done_callback(self.runAnomalyDetectionCallback)
         else:
-            self.data["anomaly"].append(None)
+            self.data["anomaly"]["PM10"].append(None)
+            self.data["anomaly"]["PM25"].append(None)
+            self.data["anomaly"]["NO2"].append(None)
 
         future = self.executor.submit(self.runPrediction)
         future.add_done_callback(self.savePredictionsCallback)
@@ -76,13 +82,28 @@ class DataModule:
     def runAnomalyDetectionCallback(self, future) -> None:
         try:
             anomaly = future.result()
-            print(f"Anomaly: {anomaly}")
-            self.data["anomaly"].append(anomaly)
-            if anomaly:
-                self.logger.info("Anomaly detected")
+            self.data["anomaly"]["PM10"].append(anomaly[0])
+            self.data["anomaly"]["PM25"].append(anomaly[1])
+            self.data["anomaly"]["NO2"].append(anomaly[2])
+            if (
+                anomaly[0] is not None
+                or anomaly[1] is not None
+                or anomaly[2] is not None
+            ):
+                pollutant = (
+                    ["PM10", "PM25", "NO2"][anomaly[0] - 1]
+                    if anomaly[0] is not None
+                    else (
+                        ["PM10", "PM25", "NO2"][anomaly[1] - 1]
+                        if anomaly[1] is not None
+                        else ["PM10", "PM25", "NO2"][anomaly[2] - 1]
+                    )
+                )
+                self.logger.info(
+                    f"Anomaly detected for pollutant: {pollutant} on index {self.idx}"
+                )
         except Exception as e:
-            # self.logger.error(f"Anomaly detection failed: {str(e)}")
-            print(f"Anomaly detection failed: {str(e)}")
+            self.logger.error(f"Anomaly detection failed: {str(e)}")
 
     def runPrediction(self):
         return self.predictionModule.predict(self.prepareDataForPrediction())

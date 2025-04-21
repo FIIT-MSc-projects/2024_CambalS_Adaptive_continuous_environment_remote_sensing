@@ -39,11 +39,6 @@ class DataModule:
         self.nextCallCount = 0
 
     def nextData(self) -> None:
-        self.data["dates"] = self.df["DatetimeBegin"].tolist()[: self.idx + 2]
-        self.data["PM10"] = self.df["PM10 Concentration"].tolist()[: self.idx]
-        self.data["PM25"] = self.df["PM2.5 Concentration"].tolist()[: self.idx]
-        self.data["NO2"] = self.df["NO2 Concentration"].tolist()[: self.idx]
-
         if self.idx >= 128 + 16:
             future = self.executor.submit(self.runAnomalyDetection)
             future.add_done_callback(self.runAnomalyDetectionCallback)
@@ -102,6 +97,11 @@ class DataModule:
             self.obsolete = False
         except Exception as e:
             self.logger.error(f"Prediction failed: {str(e)}")
+        finally:
+            self.data["dates"] = self.df["DatetimeBegin"].tolist()[: self.idx + 2]
+            self.data["PM10"] = self.df["PM10 Concentration"].tolist()[: self.idx]
+            self.data["PM25"] = self.df["PM2.5 Concentration"].tolist()[: self.idx]
+            self.data["NO2"] = self.df["NO2 Concentration"].tolist()[: self.idx]
 
     def savePredictions(self, data: dict) -> None:
         self.df.loc[self.idx + 1, "PM10 pred"] = float(data["PM10"])

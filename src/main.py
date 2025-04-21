@@ -2,6 +2,7 @@ import plotly.graph_objects as go
 import os
 import logging
 import datetime
+import plotly.express as px
 from fastapi import FastAPI, Request
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -73,106 +74,49 @@ def testEndpoint() -> str:
 
 @app.get("/")
 def getRoot(request: Request) -> HTMLResponse:
-    graph = make_subplots(
-        rows=3,
+    data = dataModule.data
+    pollutants = [
+        ("PM10", "orange"),
+        ("PM25", "orange"),
+        ("NO2", "orange"),
+    ]
+    fig = make_subplots(
+        rows=len(pollutants),
         cols=1,
         shared_xaxes=True,
-        subplot_titles=("PM10 particulate matter", "PM2.5 particulate matter", "NO2"),
+        subplot_titles=[p[0] for p in pollutants],
         vertical_spacing=0.05,
     )
 
-    # 1st subplot
-    graph.add_trace(
-        go.Scatter(
-            x=dataModule.data["dates"],
-            y=dataModule.data["PM10"],
-            mode="lines+markers",
-            name="PM10 real measurement",
-            line=dict(color="orange"),
-            marker=dict(color="orange"),
-            showlegend=True,
-            legendgroup="PM10",
-        ),
-        row=1,
-        col=1,
-    )
-    graph.add_trace(
-        go.Scatter(
-            x=dataModule.data["dates"],
-            y=dataModule.data["PM10pred"],
-            mode="lines+markers",
-            name="PM10 prediction",
-            line=dict(color="cyan"),
-            marker=dict(color="cyan"),
-            showlegend=True,
-            legendgroup="PM10",
-        ),
-        row=1,
-        col=1,
-    )
+    for i, (gas, color) in enumerate(pollutants, start=1):
+        # real
+        fig.add_trace(
+            go.Scatter(
+                x=data["dates"],
+                y=data[gas],
+                mode="lines+markers",
+                name=f"{gas} real",
+                line=dict(color=color),
+                legendgroup=gas,
+            ),
+            row=i,
+            col=1,
+        )
+        # prediction
+        fig.add_trace(
+            go.Scatter(
+                x=data["dates"],
+                y=data[f"{gas}pred"],
+                mode="lines+markers",
+                name=f"{gas} pred",
+                line=dict(color="cyan"),
+                legendgroup=gas,
+            ),
+            row=i,
+            col=1,
+        )
 
-    # 2nd subplot
-    graph.add_trace(
-        go.Scatter(
-            x=dataModule.data["dates"],
-            y=dataModule.data["PM25"],
-            mode="lines+markers",
-            name="PM2.5 real measurement",
-            line=dict(color="orange"),
-            marker=dict(color="orange"),
-            showlegend=True,
-            legendgroup="PM25",
-        ),
-        row=2,
-        col=1,
-    )
-    graph.add_trace(
-        go.Scatter(
-            x=dataModule.data["dates"],
-            y=dataModule.data["PM25pred"],
-            mode="lines+markers",
-            name="PM2.5 prediction",
-            line=dict(color="cyan"),
-            marker=dict(color="cyan"),
-            showlegend=True,
-            legendgroup="PM25",
-        ),
-        row=2,
-        col=1,
-    )
-
-    # 3rd subplot
-    graph.add_trace(
-        go.Scatter(
-            x=dataModule.data["dates"],
-            y=dataModule.data["NO2"],
-            mode="lines+markers",
-            name="NO2 real measurement",
-            line=dict(color="orange"),
-            marker=dict(color="orange"),
-            showlegend=True,
-            legendgroup="NO2",
-        ),
-        row=3,
-        col=1,
-    )
-    graph.add_trace(
-        go.Scatter(
-            x=dataModule.data["dates"],
-            y=dataModule.data["NO2pred"],
-            mode="lines+markers",
-            name="NO2 prediction",
-            line=dict(color="cyan"),
-            marker=dict(color="cyan"),
-            showlegend=True,
-            legendgroup="NO2",
-        ),
-        row=3,
-        col=1,
-    )
-    # graph.write_image('static/plot.png')
-
-    graph.update_layout(
+    fig.update_layout(
         height=840,  # Adjust the height here
         plot_bgcolor="rgba(30, 30, 30, 0.7)",
         paper_bgcolor="rgba(71, 71, 71, 1)",
@@ -181,7 +125,7 @@ def getRoot(request: Request) -> HTMLResponse:
         xaxis3=dict(rangeslider=dict(visible=True, thickness=0.05), type="date"),
     )
 
-    graph_json = graph.to_json()
+    graph_json = fig.to_json()
     logging.info("GET /")
 
     return templates.TemplateResponse(

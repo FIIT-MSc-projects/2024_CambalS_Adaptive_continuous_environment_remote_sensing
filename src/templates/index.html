@@ -75,106 +75,90 @@
     <div id="graph"></div>
   </div>
   <script>
-    var graphData = {{ graph_json | safe }};
-    var retrainingTrace = {
-      x: graphData.data[0].x, // or another array of dates
-      y: new Array(graphData.data[0].x.length).fill(null), // start with no retraining events
-      mode: 'markers',
-      marker: {
-        symbol: 'triangle-up',
-        size: 12,
-        color: 'red'
-      },
-      name: 'Retraining'
-    };
-    graphData.data.push(retrainingTrace);
-    Plotly.newPlot('graph', graphData.data, graphData.layout);
-
-    function updateGraph() {
-      fetch('/data')
-        .then(response => response.json())
-        .then(data => {
-          if (data === null || data.dates.length === 0) {
-            console.error('No data received');
-            return;
-          }
-
-          // Log data to check for consistency
-          // console.log('Received data:', data);
-
-          data.PM10pred.push(null);
-          data.PM25pred.push(null);
-          data.NO2pred.push(null);
-
-          // Get lengths of real and predicted data
-          var realLength = data.dates.length;
-          var PM10predLength = data.PM10pred.length;
-          var PM25predLength = data.PM25pred.length;
-          var NO2predLength = data.NO2pred.length;
-
-          // Ensure all arrays are aligned in length
-          if (PM10predLength !== PM25predLength || PM25predLength !== NO2predLength) {
-            console.error('Data length mismatch: PM10pred, PM25pred, and NO2pred lengths differ');
-            return;
-          }
-
-          // If predicted data has more elements, append `null` to real data
-          var PM10 = [...data.PM10];
-          var PM25 = [...data.PM25];
-          var NO2 = [...data.NO2];
-
-          while (PM10.length < PM10predLength) {
-            PM10.push(null);
-          }
-          while (PM25.length < PM25predLength) {
-            PM25.push(null);
-          }
-          while (NO2.length < NO2predLength) {
-            NO2.push(null);
-          }
-
-          // Ensure that dates array is long enough
-          if (data.dates.length < PM10predLength) {
-            console.error('Dates array is shorter than the predicted data');
-            return;
-          }
-
-          // Update each subplot (PM10, PM2.5, NO2)
-          Plotly.update('graph', {
-            x: [
-              data.dates,        // PM10 Real
-              data.dates,        // PM10 Predicted
-              data.dates,        // PM2.5 Real
-              data.dates,        // PM2.5 Predicted
-              data.dates,        // NO2 Real
-              data.dates,        // NO2 Predicted
-              data.dates         // For retraining indicaition
-            ],
-            y: [
-              PM10,              // PM10 Real (with nulls if needed)
-              data.PM10pred,     // PM10 Predicted
-              PM25,              // PM2.5 Real (with nulls if needed)
-              data.PM25pred,     // PM2.5 Predicted
-              NO2,               // NO2 Real (with nulls if needed)
-              data.NO2pred,      // NO2 Predicted
-              data.retraining    // Retraining data  
-            ]
-          });
-
-          // Update the x-axis range for all subplots
-          var lastIndex = data.dates.length - 1;
-          var firstIndex = Math.max(0, lastIndex - 61);
-
-          var updateLayout = {
-            'xaxis.range': [data.dates[firstIndex], data.dates[lastIndex]],
-            'xaxis2.range': [data.dates[firstIndex], data.dates[lastIndex]],
-            'xaxis3.range': [data.dates[firstIndex], data.dates[lastIndex]]
-          };
-          Plotly.relayout('graph', updateLayout);
-        });
-    }
-
-    setInterval(updateGraph, 2000);
+    document.addEventListener('DOMContentLoaded', () => {
+      // 0) grab our plot DIV
+      const graphDiv = document.getElementById('graph');
+  
+      // 1) load the JSON data that Jinja templated in
+      const graphData = {{ graph_json | safe }};
+  
+      // 2) build the retraining trace and append to the data
+      const retrainTrace = {
+        x: graphData.data[0].x,
+        y: new Array(graphData.data[0].x.length).fill(null),
+        mode: 'markers',
+        marker: { symbol: 'triangle-up', size: 12, color: 'red' },
+        name: 'Retraining'
+      };
+      graphData.data.push(retrainTrace);
+  
+      // 3) draw it once, then in the .then() we know graphDiv.data is populated
+      Plotly.newPlot(graphDiv, graphData.data, graphData.layout).then(() => {
+        // 4) only now read the length of the pred-trace you already have
+        //    trace 1 === PM10pred, trace 3 === PM25pred, trace 5 === NO2pred
+        let lastPredLen = graphDiv.data[1].x.length;
+  
+        // 5) start polling
+        setInterval(updateGraph, 2000);
+  
+        function updateGraph() {
+          fetch('/data')
+            .then(r => r.json())
+            .then(d => {
+              if (!d?.dates?.length || d.dates.length < 2) return;
+  
+              // parse timestamps
+              const dates = d.dates.map(ts => new Date(ts));
+              const n     = dates.length;
+              const last  = dates[n - 1];
+              const prev  = dates[n - 2];
+              const delta = last - prev;
+              const next  = new Date(last.getTime() + delta);
+  
+              // always extend real‑measurement traces (0,2,4)
+              const yReal = [d.PM10, d.PM25, d.NO2].map(a => a.slice(-1)[0]);
+              Plotly.extendTraces(
+                graphDiv,
+                {
+                  x: [ [last],   [last],   [last]   ],
+                  y: [ [yReal[0]],[yReal[1]],[yReal[2]] ]
+                },
+                [0, 2, 4]
+              );
+  
+              // only extend pred-traces (1,3,5) when new ones appear
+              if (d.PM10pred.length > lastPredLen) {
+                const yPred = [d.PM10pred, d.PM25pred, d.NO2pred].map(a => a.slice(-1)[0]);
+                Plotly.extendTraces(
+                  graphDiv,
+                  {
+                    x: [ [next],   [next],   [next]   ],
+                    y: [ [yPred[0]],[yPred[1]],[yPred[2]] ]
+                  },
+                  [1, 3, 5]
+                );
+                lastPredLen = d.PM10pred.length;
+              }
+  
+              // append retraining marker (trace 6)
+              const yRetr = d.retraining?.slice(-1)[0] ?? null;
+              Plotly.extendTraces(
+                graphDiv,
+                { x: [[last]], y: [[yRetr]] },
+                [6]
+              );
+  
+              // slide the live WINDOW_SIZE view
+              const WINDOW_SIZE = 62;
+              const firstIdx   = Math.max(0, n - WINDOW_SIZE);
+              Plotly.relayout(graphDiv, {
+                'xaxis.range': [ dates[firstIdx], next ]
+              });
+            })
+            .catch(console.error);
+        }
+      });
+    });
   </script>
 </body>
 

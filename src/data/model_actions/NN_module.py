@@ -105,7 +105,9 @@ class PredictionModule:
             bestModel.save("../models/lstm2_retrained.keras")
             self.modelPath = "../models/lstm2_retrained.keras"
 
-            self.logger.info("Retraining successful: changing model")
+            self.logger.info(
+                f"Retraining successful: changing model ---- new metrics: {metrics}"
+            )
         except Exception as e:
             self.logger.info(f"Retraining failed: {str(e)}")
         finally:

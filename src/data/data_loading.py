@@ -73,9 +73,9 @@ class DataModule:
                 "PM10": self.data["PM10"][-16:],
                 "PM25": self.data["PM25"][-16:],
                 "NO2": self.data["NO2"][-16:],
-                "PM10pred": self.data["PM10pred"][-16:],
-                "PM25pred": self.data["PM25pred"][-16:],
-                "NO2pred": self.data["NO2pred"][-16:],
+                "PM10pred": self.data["PM10pred"][-2],
+                "PM25pred": self.data["PM25pred"][-2],
+                "NO2pred": self.data["NO2pred"][-2],
             }
         )
 
@@ -136,6 +136,8 @@ class DataModule:
 
     def incrementIndex(self) -> None:
         self.idx += 1
+        if (self.idx - 128) % 20 == 0:
+            self.logger.info(f"Idx: {self.idx - 128}")
         self.nextData()
 
     def getDataForScaler(self) -> np.ndarray:
